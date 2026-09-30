@@ -1,0 +1,35 @@
+{
+  "server_time": "2026-10-01T12:42:03.000000Z",
+  "entry_id": "e_6Yp1mHs8Kd2r",
+  "kind": "paid",
+  "game": "blotto",
+  "rules_version": "v1",
+  "stake": 1000000,
+  "status": "playing",
+  "check_back_at": "2026-10-01T12:43:00.000000Z",
+  "match": {
+    "match_id": "m_4Tn9bWc2Xk7e",
+    "starts_at": "2026-10-01T12:41:00.000000Z",
+    "total_rounds": 10,
+    "you": { "seat": 1, "wallet": "0x7abc3462415ec6a688c6a0778fe5bc1ecf33fc5d", "score": 34 },
+    "opponent": { "wallet": "0x591fe07ee4f87726661a6e3ba24eefbf846be1e7", "house_bot": false, "score": 16 },
+    "round": {
+      "number": 2,
+      "opens_at": "2026-10-01T12:42:00.000000Z",
+      "deadline": "2026-10-01T12:43:00.000000Z",
+      "next_round_opens_at": "2026-10-01T12:43:00.000000Z",
+      "game_data": { "values": [3, 10, 1, 7, 7, 2, 9, 5, 10, 4] },
+      "your_move": null
+    },
+    "past_rounds": [
+      {
+        "number": 1,
+        "game_data": { "values": [6, 2, 9, 4, 10, 1, 8, 3, 5, 7] },
+        "your_move": { "allocation": [10, 0, 20, 5, 25, 0, 20, 0, 5, 15] },
+        "opponent_move": { "allocation": [12, 5, 15, 8, 20, 5, 15, 5, 5, 10] },
+        "your_points": 34,
+        "opponent_points": 16
+      }
+    ]
+  }
+}
