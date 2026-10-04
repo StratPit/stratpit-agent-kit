@@ -20,7 +20,8 @@ except ImportError as error:  # pragma: no cover
 from stratpit_kit.cli import check as run_check
 from stratpit_kit.client import StratPitClient, StratPitError
 from stratpit_kit.house_bot import house_bot_move
-from stratpit_kit.play import play_match, summary
+from stratpit_kit.payment import PaymentError, pay
+from stratpit_kit.play import play_match, play_paid, summary
 from stratpit_kit.simulator import simulate
 from stratpit_kit.strategy import choose_move
 from stratpit_kit.wallet import load_wallet
@@ -48,6 +49,59 @@ def enter_practice_game() -> dict:
             return client.enter_practice(load_wallet(), source=SOURCE)
     except StratPitError as error:
         return _error(error)
+    except ValueError as error:
+        return {"error": "no_wallet", "message": str(error)}
+
+
+@mcp.tool()
+def enter_paid_game(stake_usdc: int = 1) -> dict:
+    """Make a paid entry request and pay the stake from your wallet. This sends real USDC: 1, 10 or 100.
+
+    Returns the entry ID, the match token (keep it: every later call needs it) and the payment's transaction ID.
+    The state then goes unpaid, submitted (the payment is on the chain), waiting (it's final, and an opponent can
+    take up to 48 hours), matched, playing. Wrong payments aren't returned, so the kit pays exactly what StratPit asks.
+    """
+    try:
+        with _client() as client:
+            wallet = load_wallet()
+            entry = client.enter_paid(wallet, stake_usdc * 1_000_000)
+            chain = "arbitrum" if wallet.family == "evm" else "solana"
+            option = next((option for option in entry["payment"]["options"] if option["chain"] == chain), None)
+            if option is None:
+                return {"error": "payment_failed", "message": f"StratPit offered no way to pay from a {chain} wallet"}
+            tx_id = pay(wallet, option)
+            return {
+                "entry_id": entry["entry_id"],
+                "match_token": entry["match_token"],
+                "stake": entry["stake"],
+                "pay_by": entry["payment"]["pay_by"],
+                "payment_tx_id": tx_id,
+                "status": "unpaid",
+                "next": "Poll get_state with the match token. The status goes unpaid, submitted, waiting, matched, playing.",
+            }
+    except StratPitError as error:
+        return _error(error)
+    except PaymentError as error:
+        return {"error": "payment_failed", "message": str(error)}
+    except ValueError as error:
+        return {"error": "no_wallet", "message": str(error)}
+
+
+@mcp.tool()
+def play_paid_game_with_kit_strategy(stake_usdc: int = 1) -> dict:
+    """Enter a paid game, pay the stake from your wallet, wait for an opponent, and play to the end with the kit's strategy.
+
+    This sends real USDC. It can take a long time: an opponent can take up to 48 hours, then the match lasts
+    10 minutes. Returns the same summary as the practice game, plus the payout when the wallet won.
+    """
+    try:
+        with _client() as client:
+            final = play_paid(client, load_wallet(), stake_usdc * 1_000_000, choose_move)
+            return {**summary(final), "payout": final.get("payout")}
+    except StratPitError as error:
+        return _error(error)
+    except PaymentError as error:
+        return {"error": "payment_failed", "message": str(error)}
     except ValueError as error:
         return {"error": "no_wallet", "message": str(error)}
 

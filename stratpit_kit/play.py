@@ -12,12 +12,17 @@ from collections.abc import Callable
 import httpx
 
 from stratpit_kit.client import StratPitClient, StratPitError
+from stratpit_kit.payment import PaymentError, usdc
+from stratpit_kit.payment import pay as send_payment
 from stratpit_kit.rules import BATTLEFIELDS, TROOPS, InvalidMove, validate_allocation
 from stratpit_kit.wallet import Wallet
 
 ENDED = {"finished", "cancelled", "expired", "refunded"}
 NETWORK_ERRORS = (httpx.TransportError, httpx.TimeoutException)
 EVEN_SPLIT = [TROOPS // BATTLEFIELDS] * BATTLEFIELDS
+# A server error (a 5xx, or a reply that isn't JSON, as during a restart) is ridden out for this long before the kit gives up.
+SERVER_ERRORS_FOR = 15 * 60
+SERVER_ERROR_PAUSE = 5
 
 Log = Callable[[str], None]
 
@@ -35,6 +40,11 @@ def choose_safely(choose_move: Callable[[dict], list[int]], state: dict, log: Lo
     except Exception as error:  # noqa: BLE001 - a broken strategy must not cost the match
         log(f"your strategy raised {type(error).__name__}: {error}; sending an even split instead")
     return list(EVEN_SPLIT)
+
+
+def is_server_error(error: StratPitError) -> bool:
+    """A passing failure on the server's side, not a refusal: worth trying again."""
+    return error.status >= 500 or error.code == "server_error"
 
 
 def send_move(client: StratPitClient, token: str, state: dict, choose_move: Callable[[dict], list[int]], log: Log) -> bool:
@@ -57,6 +67,10 @@ def send_move(client: StratPitClient, token: str, state: dict, choose_move: Call
             if error.code == "rate_limited":
                 time.sleep(error.retry_after or 2)
                 continue
+            if is_server_error(error):
+                log(f"round {round_no}: the server had a problem ({error.message}); trying again")
+                time.sleep(1 + attempt)
+                continue
             log(f"round {round_no}: move refused, {error.code}: {error.message}")
             return False
         except NETWORK_ERRORS as error:
@@ -65,15 +79,39 @@ def send_move(client: StratPitClient, token: str, state: dict, choose_move: Call
     return False
 
 
-def play_match(client: StratPitClient, token: str, choose_move: Callable[[dict], list[int]], log: Log = _quiet) -> dict:
-    """Plays one match to the end with the given strategy. Returns the final state."""
+def play_match(
+    client: StratPitClient,
+    token: str,
+    choose_move: Callable[[dict], list[int]],
+    log: Log = _quiet,
+    wallet: Wallet | None = None,
+    pay_stake: bool = False,
+    pay: Callable = send_payment,
+    rpc_url: str | None = None,
+) -> dict:
+    """Plays one match to the end with the given strategy. Returns the final state.
+
+    A server error is ridden out for up to 15 minutes, since a short outage cancels and refunds
+    the match anyway, while giving up would lose it by missed turn. With `pay_stake` and the
+    wallet, an unpaid request that shows no payment yet is paid once, for `stratpit play --token --pay`.
+    """
     last_status = None
+    failing_since = None
+    paid_here = False
     while True:
         try:
             state = client.state(token, wait=True)
+            failing_since = None
         except StratPitError as error:
             if error.code == "rate_limited":
                 time.sleep(error.retry_after or 5)
+                continue
+            if is_server_error(error):
+                failing_since = failing_since or time.monotonic()
+                if time.monotonic() - failing_since > SERVER_ERRORS_FOR:
+                    raise
+                log(f"the server had a problem ({error.message}); trying again")
+                time.sleep(SERVER_ERROR_PAUSE)
                 continue
             raise
         except NETWORK_ERRORS as error:
@@ -87,6 +125,14 @@ def play_match(client: StratPitClient, token: str, choose_move: Callable[[dict],
             last_status = status
         if status in ENDED:
             return state
+        if status == "unpaid" and pay_stake and wallet is not None and not paid_here and not state.get("payments"):
+            chain = "arbitrum" if wallet.family == "evm" else "solana"
+            option = next((option for option in state["payment"]["options"] if option["chain"] == chain), None)
+            if option is None:
+                raise PaymentError(f"StratPit offered no way to pay from a {chain} wallet")
+            tx_id = pay(wallet, option, rpc_url, log)
+            paid_here = True
+            log(f"payment {tx_id} sent. StratPit shows it as submitted once it's on the chain, and waiting once it's final")
         if status == "playing":
             round_ = state["match"]["round"]
             if round_ is not None and round_["your_move"] is None:
@@ -99,6 +145,31 @@ def play_practice(
     """Enters a free practice game against the house bot and plays it to the end."""
     entry = client.enter_practice(wallet, source=source)
     log(f"entered practice match {entry['match_id']} as {wallet.address}, starts at {entry['starts_at']}")
+    return play_match(client, entry["match_token"], choose_move, log)
+
+
+def play_paid(
+    client: StratPitClient,
+    wallet: Wallet,
+    stake: int,
+    choose_move: Callable[[dict], list[int]],
+    pay: Callable = send_payment,
+    rpc_url: str | None = None,
+    log: Log = _quiet,
+) -> dict:
+    """Makes a paid entry request, pays the stake from the wallet, waits for an opponent, and plays the match to the end.
+
+    `stake` is in USDC base units (1000000 is $1). The state goes unpaid, submitted (the payment
+    is on the chain), waiting (it's final; an opponent can take up to 48 hours), matched, playing.
+    """
+    entry = client.enter_paid(wallet, stake)
+    chain = "arbitrum" if wallet.family == "evm" else "solana"
+    option = next((option for option in entry["payment"]["options"] if option["chain"] == chain), None)
+    if option is None:
+        raise PaymentError(f"StratPit offered no way to pay from a {chain} wallet")
+    log(f"entry request {entry['entry_id']} at a stake of {usdc(stake)} USDC. Pay before {entry['payment']['pay_by']}")
+    tx_id = pay(wallet, option, rpc_url, log)
+    log(f"payment {tx_id} sent. StratPit shows it as submitted once it's on the chain, and waiting once it's final")
     return play_match(client, entry["match_token"], choose_move, log)
 
 

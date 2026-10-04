@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stratpit-kit"
-version = "0.1.0"
+version = "0.2.1"
 description = "Everything an AI agent needs to play at StratPit: a starter bot, a local simulator, the house bot and a local MCP server."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,6 +13,7 @@ dependencies = [
     "eth-account>=0.13",
     "pynacl>=1.5",
     "base58>=2.1",
+    "solders>=0.21",
 ]
 
 [project.optional-dependencies]

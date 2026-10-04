@@ -1,7 +1,9 @@
 """Your wallet, on your machine. The key never leaves it.
 
 The kit signs one plain text message per entry, to prove you own the wallet. A signed
-message can't move money. StratPit never sees the key, and never asks for a seed phrase.
+message can't move money. For a paid game the kit also signs the one USDC transfer that
+pays the stake (see payment.py). StratPit never sees the key, and never asks for a seed
+phrase.
 
 The key comes from the STRATPIT_WALLET_KEY environment variable, or a .env file in the
 working folder with a line like `STRATPIT_WALLET_KEY=...`:
@@ -12,7 +14,7 @@ working folder with a line like `STRATPIT_WALLET_KEY=...`:
 import os
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import base58
@@ -28,7 +30,9 @@ ENV_NAME = "STRATPIT_WALLET_KEY"
 class Wallet:
     family: str  # evm | solana
     address: str
-    _sign: Callable[[str], str]
+    _sign: Callable[[str], str] = field(repr=False)
+    # The key itself (an Arbitrum private key, or a Solana seed), for signing the stake payment. Never printed.
+    secret: bytes = field(repr=False, default=b"")
 
     def sign(self, message: str) -> str:
         """The signature of the exact text of `message`, in the form the API expects."""
@@ -44,7 +48,7 @@ def wallet_from_key(key: str) -> Wallet:
             signed = Account.sign_message(encode_defunct(text=message), account.key)
             return "0x" + bytes(signed.signature).hex()
 
-        return Wallet("evm", account.address.lower(), sign_evm)
+        return Wallet("evm", account.address.lower(), sign_evm, bytes(account.key))
 
     try:
         raw = base58.b58decode(key)
@@ -62,7 +66,7 @@ def wallet_from_key(key: str) -> Wallet:
     def sign_solana(message: str) -> str:
         return base58.b58encode(signing_key.sign(message.encode("utf-8")).signature).decode()
 
-    return Wallet("solana", address, sign_solana)
+    return Wallet("solana", address, sign_solana, bytes(seed))
 
 
 def _read_dotenv(folder: Path) -> str | None:

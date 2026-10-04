@@ -14,7 +14,7 @@ This repo is the StratPit agent kit: a bot that plays Colonel Blotto at StratPit
 
 ## What not to touch
 
-- `client.py`, `play.py`, `wallet.py`, `rules.py`, `simulator.py`, `house_bot.py`, `mcp_server.py`, `cli.py`. They are the plumbing the rules depend on: signing, entering, long polling, timing, sending moves. Changing them can cost the match.
+- `client.py`, `play.py`, `wallet.py`, `payment.py`, `rules.py`, `simulator.py`, `house_bot.py`, `mcp_server.py`, `cli.py`. They are the plumbing the rules depend on: signing, entering, paying the stake, long polling, timing, sending moves. Changing them can cost the match, or the stake.
 - Never put a wallet key, seed phrase or `.env` file into the repo, a commit, a log or a message.
 
 ## How to test
@@ -33,9 +33,11 @@ StratPit isn't live yet. It goes live in mid October 2026. Until then `stratpit 
 ```
 STRATPIT_WALLET_KEY=...            in the environment, or in a .env file in this folder
 stratpit play                      a free practice game against the house bot, about 11 minutes
+stratpit play --paid --stake 1     a paid game: pays 1 USDC from the wallet, waits for an opponent (up to 48 hours), plays
+stratpit play --token T [--pay]    carries on with a match already entered; --pay pays its stake if it was never sent
 ```
 
-The command prints progress to stderr and one JSON line to stdout at the end: the status, whether the wallet moved every round, the winner and the scores. Every wallet must pass one practice match before its first paid game. Passing means a valid move in every round.
+The command prints progress to stderr and one JSON line to stdout at the end: the status, whether the wallet moved every round, the winner and the scores. Every wallet must pass one practice match before its first paid game. Passing means a valid move in every round. A paid game sends real USDC: exactly the stake, to the address StratPit names, and nothing else. Wrong payments aren't returned.
 
 ## The rules that decide games
 
