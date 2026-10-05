@@ -3,7 +3,7 @@
 It runs on your machine, next to your wallet key, and talks to StratPit's API the same
 way the command line does. Nothing extra runs on StratPit's server.
 
-    pip install "stratpit-kit[mcp]"
+    pip install -e ".[mcp]"
     python -m stratpit_kit.mcp_server
 
 Then add it to your MCP client's settings as a stdio server with that command.
@@ -12,10 +12,12 @@ Entries made through it carry the source tag "mcp".
 
 import json
 
+import httpx
+
 try:
     from mcp.server.fastmcp import FastMCP
 except ImportError as error:  # pragma: no cover
-    raise SystemExit('The MCP server needs the mcp package: pip install "stratpit-kit[mcp]"') from error
+    raise SystemExit('The MCP server needs the mcp package: pip install -e ".[mcp]"') from error
 
 from stratpit_kit.cli import check as run_check
 from stratpit_kit.client import StratPitClient, StratPitError
@@ -38,6 +40,11 @@ def _error(error: StratPitError) -> dict:
     return {"error": error.code, "message": error.message}
 
 
+def _network(error: httpx.HTTPError) -> dict:
+    """StratPit couldn't be reached. The kind of failure, never the address."""
+    return {"error": "network_error", "message": f"couldn't reach StratPit ({type(error).__name__}). Check the connection and try again"}
+
+
 @mcp.tool()
 def enter_practice_game() -> dict:
     """Enter a free practice game against the house bot. Returns the match token, match ID and start time.
@@ -49,6 +56,8 @@ def enter_practice_game() -> dict:
             return client.enter_practice(load_wallet(), source=SOURCE)
     except StratPitError as error:
         return _error(error)
+    except httpx.HTTPError as error:
+        return _network(error)
     except ValueError as error:
         return {"error": "no_wallet", "message": str(error)}
 
@@ -81,6 +90,8 @@ def enter_paid_game(stake_usdc: int = 1) -> dict:
             }
     except StratPitError as error:
         return _error(error)
+    except httpx.HTTPError as error:
+        return _network(error)
     except PaymentError as error:
         return {"error": "payment_failed", "message": str(error)}
     except ValueError as error:
@@ -100,6 +111,8 @@ def play_paid_game_with_kit_strategy(stake_usdc: int = 1) -> dict:
             return {**summary(final), "payout": final.get("payout")}
     except StratPitError as error:
         return _error(error)
+    except httpx.HTTPError as error:
+        return _network(error)
     except PaymentError as error:
         return {"error": "payment_failed", "message": str(error)}
     except ValueError as error:
@@ -117,6 +130,8 @@ def get_state(match_token: str, wait: bool = False) -> dict:
             return client.state(match_token, wait=wait)
     except StratPitError as error:
         return _error(error)
+    except httpx.HTTPError as error:
+        return _network(error)
 
 
 @mcp.tool()
@@ -127,6 +142,8 @@ def send_move(match_token: str, match_id: str, round_number: int, allocation: li
             return client.move(match_token, match_id, round_number, allocation)
     except StratPitError as error:
         return _error(error)
+    except httpx.HTTPError as error:
+        return _network(error)
 
 
 @mcp.tool()
@@ -142,6 +159,8 @@ def play_practice_game_with_kit_strategy() -> dict:
             return summary(final)
     except StratPitError as error:
         return _error(error)
+    except httpx.HTTPError as error:
+        return _network(error)
     except ValueError as error:
         return {"error": "no_wallet", "message": str(error)}
 
@@ -161,7 +180,10 @@ def check_strategy() -> dict:
 
 @mcp.tool()
 def public_data(what: str, address: str | None = None, match_id: str | None = None) -> dict:
-    """Public data from StratPit: what="waiting" | "leaderboard" | "wallet" (with address) | "matches" (with address) | "replay" (with match_id)."""
+    """Public data from StratPit.
+
+    what="waiting" | "leaderboard" | "wallet" (with address) | "matches" (with address) | "replay" (with match_id).
+    """
     try:
         with _client() as client:
             if what == "waiting":
@@ -176,6 +198,8 @@ def public_data(what: str, address: str | None = None, match_id: str | None = No
                 return client.replay(match_id)
     except StratPitError as error:
         return _error(error)
+    except httpx.HTTPError as error:
+        return _network(error)
     return {"error": "bad_request", "message": json.dumps({"what": what, "address": address, "match_id": match_id})}
 
 

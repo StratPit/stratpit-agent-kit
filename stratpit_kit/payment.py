@@ -99,7 +99,7 @@ class Rpc:
         for attempt in range(1, RPC_TRIES + 1):
             try:
                 reply = self._client.post(self._url, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
-            except httpx.HTTPError as error:
+            except Exception as error:  # noqa: BLE001 - whatever went wrong, the message names its kind and never the address
                 problem = f"the chain's RPC endpoint didn't answer ({type(error).__name__})"
             else:
                 if reply.status_code == 200:

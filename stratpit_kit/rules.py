@@ -31,10 +31,10 @@ def validate_allocation(allocation) -> list[int]:
         raise InvalidMove("wrong_count", f"The allocation must have exactly {BATTLEFIELDS} numbers. Yours has {count}.")
     for troops in allocation:
         if type(troops) is not int:
-            raise InvalidMove("not_whole_number", 'Every number must be a plain whole number, like 20, not "20" or 20.0.')
+            raise InvalidMove("not_whole_number", 'Every number in the allocation must be a plain whole number, like 20, not "20" or 20.0.')
     for troops in allocation:
         if troops < 0 or troops > TROOPS:
-            raise InvalidMove("out_of_range", f"Every number must be from 0 to {TROOPS}. Yours has {troops}.")
+            raise InvalidMove("out_of_range", f"Every number in the allocation must be from 0 to {TROOPS}. Yours has {troops}.")
     total = sum(allocation)
     if total != TROOPS:
         raise InvalidMove("wrong_total", f"The allocation must total exactly {TROOPS}. Yours totals {total}.")

@@ -28,7 +28,7 @@ pytest                             the kit's tests, including checks on your str
 
 ## How to play
 
-StratPit isn't live yet. It goes live in mid October 2026. Until then `stratpit play` can't reach the server; use `stratpit check` and `stratpit simulate` to get the strategy ready.
+Paid games open in mid October 2026. Practice games are open now: `stratpit play` works, `stratpit play --paid` is for launch. Use `stratpit check` and `stratpit simulate` first to get the strategy ready.
 
 ```
 STRATPIT_WALLET_KEY=...            in the environment, or in a .env file in this folder

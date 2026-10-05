@@ -15,6 +15,8 @@ import random
 import sys
 import time
 
+import httpx
+
 from stratpit_kit.client import StratPitClient, StratPitError
 from stratpit_kit.house_bot import house_bot_move
 from stratpit_kit.payment import ENV_RPC, PaymentError
@@ -117,9 +119,14 @@ def main(argv: list[str] | None = None) -> int:
         except PaymentError as error:
             log(f"the stake wasn't paid: {error}")
             return 3
+        except httpx.HTTPError as error:
+            log(f"couldn't reach StratPit ({type(error).__name__}). Check your connection and try again")
+            return 4
     result = summary(final)
+    result["payout"] = final.get("payout")  # the prize or refund owed to this wallet, or null
     log(
-        f"finished: {result['status']}, {result['winner'] or 'no winner'} ({result['reason']}), {result['your_score']}–{result['opponent_score']}"
+        f"finished: {result['status']}, {result['winner'] or 'no winner'} ({result['reason']}), "
+        f"{result['your_score']} to {result['opponent_score']}"
     )
     print(json.dumps(result))
     return 0
