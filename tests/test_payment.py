@@ -56,6 +56,7 @@ def test_an_arbitrum_payment_is_signed_by_the_wallet_and_sent():
     wallet = wallet_from_key(account.key.hex())
     calls = []
     balance = 5_000_000
+    gas_money = 10**15  # 0.001 ETH
 
     def rpc(request):
         body = json.loads(request.content)
@@ -66,6 +67,9 @@ def test_an_arbitrum_payment_is_signed_by_the_wallet_and_sent():
         if method == "eth_call":
             assert params[0]["to"] == SEPOLIA_USDC and params[0]["data"] == "0x70a08231" + "0" * 24 + wallet.address[2:]
             return reply(hex(balance))
+        if method == "eth_getBalance":
+            assert params == [wallet.address, "latest"]
+            return reply(hex(gas_money))
         if method == "eth_getTransactionCount":
             assert params == [wallet.address, "pending"]
             return reply("0x3")
@@ -90,6 +94,17 @@ def test_an_arbitrum_payment_is_signed_by_the_wallet_and_sent():
         pay(wallet, evm_option(), rpc=rpc_with(rpc))
     assert "eth_sendRawTransaction" not in [c["method"] for c in calls]
 
+    # Enough USDC but no ETH for gas, or too little: nothing is sent, and the message says so.
+    balance = 5_000_000
+    gas_money = 0
+    with pytest.raises(PaymentError, match="holds no ETH"):
+        pay(wallet, evm_option(), rpc=rpc_with(rpc))
+    gas_money = 1_000  # far short of 90,000 gas at 0.2 gwei
+    with pytest.raises(PaymentError, match="ETH on Arbitrum Sepolia, and the transfer needs about"):
+        pay(wallet, evm_option(), rpc=rpc_with(rpc))
+    assert "eth_sendRawTransaction" not in [c["method"] for c in calls]
+    gas_money = 10**15
+
     # The wrong chain behind the endpoint: nothing is sent.
     def other_chain(request):
         return reply(hex(1)) if json.loads(request.content)["method"] == "eth_chainId" else rpc(request)
@@ -109,6 +124,7 @@ def test_a_solana_payment_is_signed_by_the_wallet_and_sent():
     blockhash = base58.b58encode(bytes(range(32))).decode()
     sent = []
     balance = "5000000"
+    lamports = 50_000_000  # 0.05 SOL
 
     def rpc(request):
         body = json.loads(request.content)
@@ -116,6 +132,9 @@ def test_a_solana_payment_is_signed_by_the_wallet_and_sent():
         if method == "getTokenAccountBalance":
             assert params[0] == token_account(wallet.address, DEVNET_USDC)
             return reply({"context": {"slot": 1}, "value": {"amount": balance, "decimals": 6}})
+        if method == "getBalance":
+            assert params == [wallet.address]
+            return reply({"context": {"slot": 1}, "value": lamports})
         if method == "getLatestBlockhash":
             return reply({"context": {"slot": 1}, "value": {"blockhash": blockhash, "lastValidBlockHeight": 100}})
         assert method == "sendTransaction" and params[1]["encoding"] == "base64"
@@ -127,11 +146,20 @@ def test_a_solana_payment_is_signed_by_the_wallet_and_sent():
     transaction.verify()
     keys = [str(k) for k in transaction.message.account_keys]
     assert keys[0] == wallet.address
-    assert token_account(wallet.address, DEVNET_USDC) in keys and token_account(PAYOUT_SOLANA, DEVNET_USDC) in keys and PAYOUT_SOLANA in keys
+    assert (
+        token_account(wallet.address, DEVNET_USDC) in keys and token_account(PAYOUT_SOLANA, DEVNET_USDC) in keys and PAYOUT_SOLANA in keys
+    )
     assert len(transaction.message.instructions) == 2
 
     balance = "10"
     with pytest.raises(PaymentError, match="holds 1e-05 USDC"):
+        pay(wallet, solana_option(), rpc=rpc_with(rpc))
+    assert len(sent) == 1
+
+    # Enough USDC but no SOL for the fee: nothing is sent.
+    balance = "5000000"
+    lamports = 0
+    with pytest.raises(PaymentError, match="holds 0.000000 SOL"):
         pay(wallet, solana_option(), rpc=rpc_with(rpc))
     assert len(sent) == 1
 

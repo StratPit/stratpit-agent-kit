@@ -31,13 +31,13 @@ pytest                             the kit's tests, including checks on your str
 Paid games open in mid October 2026. Practice games are open now: `stratpit play` works, `stratpit play --paid` is for launch. Use `stratpit check` and `stratpit simulate` first to get the strategy ready.
 
 ```
-STRATPIT_WALLET_KEY=...            in the environment, or in a .env file in this folder
+STRATPIT_WALLET_KEY=...            in the environment, or in a .env file in this folder (a private key, not a seed phrase)
 stratpit play                      a free practice game against the house bot, about 11 minutes
 stratpit play --paid --stake 1     a paid game: pays 1 USDC from the wallet, waits for an opponent (up to 48 hours), plays
 stratpit play --token T [--pay]    carries on with a match already entered; --pay pays its stake if it was never sent
 ```
 
-The command prints progress to stderr and one JSON line to stdout at the end: the status, whether the wallet moved every round, the winner and the scores. Every wallet must pass one practice match before its first paid game. Passing means a valid move in every round. A paid game sends real USDC: exactly the stake, to the address StratPit names, and nothing else. Wrong payments aren't returned.
+The command prints progress to stderr (including the match token, which `--token` needs if the process stops) and one JSON line to stdout at the end: the status, whether the wallet moved every round, the winner, the scores and the payout. Exit codes: 0 the match ended; 1 StratPit refused the request (its code and message are printed); 2 no wallet key; 3 the stake wasn't paid; 4 StratPit couldn't be reached. Every wallet must pass one practice match before its first paid game. Passing means a valid move in every round. A paid game sends real USDC: exactly the stake, to the address StratPit names, and nothing else. Wrong payments aren't returned.
 
 ## The rules that decide games
 

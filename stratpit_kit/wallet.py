@@ -8,9 +8,12 @@ phrase.
 The key comes from the STRATPIT_WALLET_KEY environment variable, or a .env file in the
 working folder with a line like `STRATPIT_WALLET_KEY=...`:
 - Arbitrum: the private key as 64 hex characters, with or without 0x (as MetaMask exports it).
-- Solana: the secret key in base58 (as Phantom exports it).
+- Solana: the secret key in base58 (as Phantom exports it), or the JSON list of numbers that
+  solana-keygen writes to its key file.
+A seed phrase isn't a key: export the account's private key from the wallet app first.
 """
 
+import json
 import os
 import re
 from collections.abc import Callable
@@ -51,9 +54,9 @@ def wallet_from_key(key: str) -> Wallet:
         return Wallet("evm", account.address.lower(), sign_evm, bytes(account.key))
 
     try:
-        raw = base58.b58decode(key)
-    except ValueError as error:
-        raise ValueError("The wallet key isn't a hex Arbitrum key or a base58 Solana key.") from error
+        raw = bytes(json.loads(key)) if key.startswith("[") else base58.b58decode(key)
+    except (ValueError, TypeError) as error:
+        raise ValueError("The wallet key isn't a hex Arbitrum key, a base58 Solana key or solana-keygen's JSON list.") from error
     if len(raw) == 64:
         seed = raw[:32]
     elif len(raw) == 32:

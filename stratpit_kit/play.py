@@ -145,6 +145,7 @@ def play_practice(
     """Enters a free practice game against the house bot and plays it to the end."""
     entry = client.enter_practice(wallet, source=source)
     log(f"entered practice match {entry['match_id']} as {wallet.address}, starts at {entry['starts_at']}")
+    log(f"match token {entry['match_token']}. If this stops, `stratpit play --token {entry['match_token']}` carries on")
     return play_match(client, entry["match_token"], choose_move, log)
 
 
@@ -168,6 +169,10 @@ def play_paid(
     if option is None:
         raise PaymentError(f"StratPit offered no way to pay from a {chain} wallet")
     log(f"entry request {entry['entry_id']} at a stake of {usdc(stake)} USDC. Pay before {entry['payment']['pay_by']}")
+    log(
+        f"match token {entry['match_token']}. If this stops, `stratpit play --token {entry['match_token']}` carries on "
+        "(add --pay if the stake was never sent)"
+    )
     tx_id = pay(wallet, option, rpc_url, log)
     log(f"payment {tx_id} sent. StratPit shows it as submitted once it's on the chain, and waiting once it's final")
     return play_match(client, entry["match_token"], choose_move, log)

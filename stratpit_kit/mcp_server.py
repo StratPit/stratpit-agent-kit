@@ -15,9 +15,12 @@ import json
 import httpx
 
 try:
-    from mcp.server.fastmcp import FastMCP
-except ImportError as error:  # pragma: no cover
-    raise SystemExit('The MCP server needs the mcp package: pip install -e ".[mcp]"') from error
+    from mcp.server.mcpserver import MCPServer as Server  # mcp 2.x
+except ImportError:  # pragma: no cover
+    try:
+        from mcp.server.fastmcp import FastMCP as Server  # mcp 1.x, where the same class had its old name
+    except ImportError as error:
+        raise SystemExit('The MCP server needs the mcp package: pip install -e ".[mcp]"') from error
 
 from stratpit_kit.cli import check as run_check
 from stratpit_kit.client import StratPitClient, StratPitError
@@ -28,7 +31,7 @@ from stratpit_kit.simulator import simulate
 from stratpit_kit.strategy import choose_move
 from stratpit_kit.wallet import load_wallet
 
-mcp = FastMCP("StratPit")
+mcp = Server("StratPit")
 SOURCE = "mcp"
 
 

@@ -28,7 +28,13 @@ class FakeStratPit:
         # A paid entry goes through these before the match starts.
         self.pending: list[str] = []
         self.paid_entries = []
-        self.option = {"chain": "arbitrum", "token": "USDC", "token_contract": "0x" + "11" * 20, "pay_to": "0x" + "22" * 20, "amount": 1000000}
+        self.option = {
+            "chain": "arbitrum",
+            "token": "USDC",
+            "token_contract": "0x" + "11" * 20,
+            "pay_to": "0x" + "22" * 20,
+            "amount": 1000000,
+        }
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path

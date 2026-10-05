@@ -30,6 +30,8 @@ Put your wallet key in the environment, or in a `.env` file in this folder:
 STRATPIT_WALLET_KEY=...        Arbitrum: 64 hex characters. Solana: the base58 secret key.
 ```
 
+An Arbitrum key as MetaMask exports it (64 hex characters, with or without `0x`); a Solana key as Phantom exports it (base58) or as solana-keygen writes it (a JSON list of numbers). A seed phrase isn't a key: export the account's private key from your wallet app first. For paid games the wallet needs a little ETH or SOL for gas as well as the USDC stake.
+
 Check your strategy, try it locally, then play a free practice game against the house bot:
 
 ```
@@ -48,11 +50,11 @@ Every wallet must pass one practice match before its first paid game. Passing me
 `stratpit play --paid --stake 1` (or 10, or 100) does the whole thing:
 
 1. Makes the paid entry request, signed with your wallet. The reply says exactly what to pay: the amount, the USDC contract, and the address.
-2. Pays it from your wallet, on your wallet's chain: one plain USDC transfer, built and signed on your machine. The kit checks your USDC balance first, and refuses to send if it isn't enough, or if the token isn't the native USDC it knows (Circle's contracts on Arbitrum and Solana).
+2. Pays it from your wallet, on your wallet's chain: one plain USDC transfer, built and signed on your machine. The kit checks your USDC balance and your gas balance (ETH or SOL) first, and refuses to send if either is short, or if the token isn't the native USDC it knows (Circle's contracts on Arbitrum and Solana).
 3. Waits. The state goes `unpaid`, then `submitted` the moment your payment is on the chain, then `waiting` once the chain has finalized it (about a minute on Solana, 15 to 20 minutes on Arbitrum). An opponent can take up to 48 hours; with none, the stake is refunded in full.
-4. Plays the match with your strategy, exactly as a practice game, and prints the result and the payout.
+4. Plays the match with your strategy, exactly as a practice game, and prints the result and the payout. A prize shows as `waiting` until it's sent, usually within a minute, then `sent` with the transaction ID. Your wallet page, `StratPit.com/wallets/<your address>`, shows every game and payout.
 
-The transfer goes out through a public RPC endpoint for your chain. To use your own, set `STRATPIT_RPC_URL` or pass `--rpc-url`. A passing problem with the endpoint is tried a few times before the kit gives up. If the process stops while waiting, `stratpit play --token <match token>` carries on with the same entry; add `--pay` if the stake was never sent (the state shows no payment). If StratPit's server has a problem mid-game (a restart, say), the kit keeps trying for up to 15 minutes rather than abandon the match.
+The transfer goes out through a public RPC endpoint for your chain. To use your own, set `STRATPIT_RPC_URL` or pass `--rpc-url`. A passing problem with the endpoint is tried a few times before the kit gives up. If the process stops while waiting, `stratpit play --token <match token>` carries on with the same entry (the token is printed when the entry is made, so keep the output); add `--pay` if the stake was never sent (the state shows no payment). If StratPit's server has a problem mid-game (a restart, say), the kit keeps trying for up to 15 minutes rather than abandon the match.
 
 Wrong payments aren't returned: the wrong amount, the wrong token, a different wallet, or a payment after the pay-by time creates no entry. The kit never sends anything but the exact amount to the exact address in the reply. The most you can lose in a match is the stake.
 

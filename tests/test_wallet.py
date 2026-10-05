@@ -31,12 +31,14 @@ def test_a_solana_key_as_phantom_exports_it():
     assert wallet.address == base58.b58encode(signing_key.verify_key.encode()).decode()
     signature = wallet.sign(MESSAGE)
     VerifyKey(signing_key.verify_key.encode()).verify(MESSAGE.encode(), base58.b58decode(signature))
-    # A 32-byte seed works too.
+    # A 32-byte seed works too, and so does the JSON list solana-keygen writes.
     assert wallet_from_key(base58.b58encode(bytes(signing_key)).decode()).address == wallet.address
+    as_json = str(list(bytes(signing_key) + signing_key.verify_key.encode()))
+    assert wallet_from_key(as_json).address == wallet.address
 
 
 def test_bad_keys_are_refused():
-    for key in ("", "not a key", "0x1234", "1" * 10):
+    for key in ("", "not a key", "0x1234", "1" * 10, "[1, 2, 3]", "[not json"):
         with pytest.raises(ValueError):
             wallet_from_key(key)
 

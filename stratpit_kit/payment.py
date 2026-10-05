@@ -53,6 +53,8 @@ TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
 ASSOCIATED_TOKEN_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
 SYSTEM_PROGRAM = "11111111111111111111111111111111"
 USDC_DECIMALS = 6
+# A Solana transfer's fee is about 5,000 lamports; this leaves room for a priority fee.
+MIN_LAMPORTS_FOR_FEES = 20_000
 
 Log = Callable[[str], None]
 
@@ -166,18 +168,28 @@ def pay_evm(wallet: Wallet, network: Network, token: str, to_address: str, amoun
     balance = int(rpc.call("eth_call", [{"to": contract, "data": "0x" + BALANCE_SELECTOR + pad(wallet.address)}, "latest"]), 16)
     if balance < amount:
         raise PaymentError(f"your wallet holds {usdc(balance)} USDC on {network.label}, and the stake is {usdc(amount)}. Not paying.")
+    # The transfer costs a little ETH in gas, which USDC can't pay. A wallet with none would have its transaction refused.
+    gas_money = int(rpc.call("eth_getBalance", [wallet.address, "latest"]), 16)
+    if gas_money == 0:
+        raise PaymentError(f"your wallet holds no ETH on {network.label}, and the transfer needs a little for gas. Not paying.")
     data = transfer_data(to_address, amount)
     nonce = int(rpc.call("eth_getTransactionCount", [wallet.address, "pending"]), 16)
     gas = int(rpc.call("eth_estimateGas", [{"from": wallet.address, "to": contract, "data": data}]), 16)
     price = int(rpc.call("eth_gasPrice", []), 16)
+    gas_limit, gas_price = int(gas * 1.5), price * 2
+    if gas_money < gas_limit * gas_price:
+        raise PaymentError(
+            f"your wallet holds {gas_money / 1e18:.6f} ETH on {network.label}, and the transfer needs about "
+            f"{gas_limit * gas_price / 1e18:.6f} for gas. Not paying."
+        )
     transaction = {
         "chainId": chain_id,
         "nonce": nonce,
         "to": contract,
         "value": 0,
         "data": data,
-        "gas": int(gas * 1.5),
-        "gasPrice": price * 2,
+        "gas": gas_limit,
+        "gasPrice": gas_price,
     }
     signed = Account.sign_transaction(transaction, wallet.secret)
     return str(rpc.call("eth_sendRawTransaction", ["0x" + bytes(signed.raw_transaction).hex()]))
@@ -236,6 +248,12 @@ def pay_solana(wallet: Wallet, network: Network, mint: str, to_wallet: str, amou
         raise PaymentError(f"your wallet has no USDC account on {network.label}. Not paying.") from None
     if balance < amount:
         raise PaymentError(f"your wallet holds {usdc(balance)} USDC on {network.label}, and the stake is {usdc(amount)}. Not paying.")
+    # The transfer costs a little SOL in fees, which USDC can't pay.
+    lamports = int(rpc.call("getBalance", [wallet.address])["value"])
+    if lamports < MIN_LAMPORTS_FOR_FEES:
+        raise PaymentError(
+            f"your wallet holds {lamports / 1e9:.6f} SOL on {network.label}, and the transfer needs a little for the fee. Not paying."
+        )
     latest = rpc.call("getLatestBlockhash", [{"commitment": "finalized"}])
     transaction = build_solana_transfer(keypair, mint, to_wallet, amount, latest["value"]["blockhash"])
     raw = base64.b64encode(bytes(transaction)).decode()
