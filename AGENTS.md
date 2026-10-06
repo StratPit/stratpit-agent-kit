@@ -28,8 +28,6 @@ pytest                             the kit's tests, including checks on your str
 
 ## How to play
 
-Paid games open in mid October 2026. Practice games are open now: `stratpit play` works, `stratpit play --paid` is for launch. Use `stratpit check` and `stratpit simulate` first to get the strategy ready.
-
 ```
 STRATPIT_WALLET_KEY=...            in the environment, or in a .env file in this folder (a private key, not a seed phrase)
 stratpit play                      a free practice game against the house bot, about 11 minutes

@@ -15,12 +15,13 @@ pytest.importorskip("mcp")
 
 from stratpit_kit import mcp_server  # noqa: E402
 from stratpit_kit.client import StratPitClient  # noqa: E402
+from stratpit_kit.payment import PaymentError  # noqa: E402
 from test_client import FakeStratPit  # noqa: E402
 
 EXPECTED_TOOLS = {
     "enter_practice_game",
     "enter_paid_game",
-    "play_paid_game_with_kit_strategy",
+    "play_match_with_kit_strategy",
     "get_state",
     "send_move",
     "play_practice_game_with_kit_strategy",
@@ -76,6 +77,28 @@ def test_a_paid_entry_pays_the_stake(fake, monkeypatch):
     result = mcp_server.enter_paid_game(1)
     assert result["status"] == "unpaid" and result["payment_tx_id"] == "0xtx" and result["match_token"] == fake.token
     assert paid == [fake.option] and fake.paid_entries[0]["stake"] == 1_000_000
+    # The paid match is then played with the one-call tool, which pays nothing itself.
+    monkeypatch.setattr(mcp_server, "pay", lambda *_: pytest.fail("the play tool must never pay"))
+    played = mcp_server.play_match_with_kit_strategy(result["match_token"])
+    assert played["status"] == "finished" and played["moved_every_round"] is True and played["payout"] is None
+    assert fake.pending == [] and sorted(fake.moves) == [1, 2]
+
+
+def test_a_failed_payment_keeps_the_match_token(fake, monkeypatch):
+    """No gas or no USDC: nothing is sent, and the agent still gets the token and the payment option."""
+
+    def no_gas(wallet, option):
+        raise PaymentError("the wallet has no ETH for gas")
+
+    monkeypatch.setattr(mcp_server, "pay", no_gas)
+    result = mcp_server.enter_paid_game(1)
+    assert result["error"] == "payment_failed" and "gas" in result["message"]
+    assert result["match_token"] == fake.token and result["payment_option"] == fake.option and result["pay_by"] == "x"
+    assert "payment_tx_id" not in result and fake.paid_entries[0]["stake"] == 1_000_000
+
+
+def test_play_tool_refusals_are_plain_errors(fake):
+    assert mcp_server.play_match_with_kit_strategy("mt_wrong") == {"error": "token_invalid", "message": "no"}
 
 
 def test_public_data(fake):
@@ -112,10 +135,14 @@ def test_the_server_answers_over_stdio():
         async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
             await session.initialize()
             listed = await session.list_tools()
-            result = await session.call_tool("check_strategy", {})
-            return {tool.name for tool in listed.tools}, result
+            check = await session.call_tool("check_strategy", {})
+            simulated = await session.call_tool("simulate_locally", {"games": 3, "seed": 7})
+            refused = await session.call_tool("public_data", {"what": "nothing"})
+            return {tool.name for tool in listed.tools}, check, simulated, refused
 
-    names, result = asyncio.run(asyncio.wait_for(talk(), 90))
+    names, check, simulated, refused = asyncio.run(asyncio.wait_for(talk(), 90))
     assert names == EXPECTED_TOOLS
-    report = json.loads(result.content[0].text)
+    report = json.loads(check.content[0].text)
     assert report["ok"] is True and report["invalid"] == 0
+    assert json.loads(simulated.content[0].text)["games"] == 3  # arguments arrive over the wire
+    assert json.loads(refused.content[0].text)["error"] == "bad_request"  # a refusal is a reply, not a protocol error

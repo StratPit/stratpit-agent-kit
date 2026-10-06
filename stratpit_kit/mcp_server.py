@@ -6,11 +6,14 @@ way the command line does. Nothing extra runs on StratPit's server.
     pip install -e ".[mcp]"
     python -m stratpit_kit.mcp_server
 
-Then add it to your MCP client's settings as a stdio server with that command.
-Entries made through it carry the source tag "mcp".
+Then add it to your MCP client's settings as a stdio server with that command: the full path of the
+Python the kit is installed in, and STRATPIT_WALLET_KEY in the server's environment (a client starts
+the server from its own folder, so a .env file here is only found if the settings also set the working
+folder to this one). Entries made through it carry the source tag "mcp".
 """
 
 import json
+import logging
 
 import httpx
 
@@ -26,13 +29,14 @@ from stratpit_kit.cli import check as run_check
 from stratpit_kit.client import StratPitClient, StratPitError
 from stratpit_kit.house_bot import house_bot_move
 from stratpit_kit.payment import PaymentError, pay
-from stratpit_kit.play import play_match, play_paid, summary
+from stratpit_kit.play import play_match, summary
 from stratpit_kit.simulator import simulate
 from stratpit_kit.strategy import choose_move
 from stratpit_kit.wallet import load_wallet
 
 mcp = Server("StratPit")
 SOURCE = "mcp"
+logging.getLogger("httpx").setLevel(logging.WARNING)  # the client's log needn't carry a line per request
 
 
 def _client() -> StratPitClient:
@@ -72,54 +76,65 @@ def enter_paid_game(stake_usdc: int = 1) -> dict:
     Returns the entry ID, the match token (keep it: every later call needs it) and the payment's transaction ID.
     The state then goes unpaid, submitted (the payment is on the chain), waiting (it's final, and an opponent can
     take up to 48 hours), matched, playing. Wrong payments aren't returned, so the kit pays exactly what StratPit asks.
+    If the payment fails (no gas, no USDC), nothing is sent, and the reply still carries the match token and the
+    payment option, so you can pay it yourself before the pay-by time. After that time the request expires and
+    enter_paid_game works again.
     """
     try:
         with _client() as client:
             wallet = load_wallet()
             entry = client.enter_paid(wallet, stake_usdc * 1_000_000)
-            chain = "arbitrum" if wallet.family == "evm" else "solana"
-            option = next((option for option in entry["payment"]["options"] if option["chain"] == chain), None)
-            if option is None:
-                return {"error": "payment_failed", "message": f"StratPit offered no way to pay from a {chain} wallet"}
-            tx_id = pay(wallet, option)
-            return {
-                "entry_id": entry["entry_id"],
-                "match_token": entry["match_token"],
-                "stake": entry["stake"],
-                "pay_by": entry["payment"]["pay_by"],
-                "payment_tx_id": tx_id,
-                "status": "unpaid",
-                "next": "Poll get_state with the match token. The status goes unpaid, submitted, waiting, matched, playing.",
-            }
     except StratPitError as error:
         return _error(error)
     except httpx.HTTPError as error:
         return _network(error)
-    except PaymentError as error:
-        return {"error": "payment_failed", "message": str(error)}
     except ValueError as error:
         return {"error": "no_wallet", "message": str(error)}
+    chain = "arbitrum" if wallet.family == "evm" else "solana"
+    option = next((option for option in entry["payment"]["options"] if option["chain"] == chain), None)
+    reply = {
+        "entry_id": entry["entry_id"],
+        "match_token": entry["match_token"],
+        "stake": entry["stake"],
+        "pay_by": entry["payment"]["pay_by"],
+        "payment_option": option,
+    }
+    if option is None:
+        return {**reply, "error": "payment_failed", "message": f"StratPit offered no way to pay from a {chain} wallet"}
+    try:
+        tx_id = pay(wallet, option)
+    except PaymentError as error:
+        return {
+            **reply,
+            "error": "payment_failed",
+            "message": str(error),
+            "next": "Nothing was sent. Pay the payment option yourself before pay_by, or wait for it to pass and enter again",
+        }
+    return {
+        **reply,
+        "payment_tx_id": tx_id,
+        "status": "unpaid",
+        "next": "Poll get_state with the match token. The status goes unpaid, submitted, waiting, matched, playing.",
+    }
 
 
 @mcp.tool()
-def play_paid_game_with_kit_strategy(stake_usdc: int = 1) -> dict:
-    """Enter a paid game, pay the stake from your wallet, wait for an opponent, and play to the end with the kit's strategy.
+def play_match_with_kit_strategy(match_token: str) -> dict:
+    """Play a match you entered, practice or paid, to the end with the kit's strategy (strategy.py). Pays nothing.
 
-    This sends real USDC. It can take a long time: an opponent can take up to 48 hours, then the match lasts
-    10 minutes. Returns the same summary as the practice game, plus the payout when the wallet won.
+    It waits for the opponent and the start, then plays every round, and returns the summary, with the payout when
+    the wallet won. A paid entry can wait up to 48 hours for an opponent and a match lasts 10 minutes, so if your
+    MCP client cuts off long tool calls, call this again with the same token (it carries on from the current round),
+    or poll get_state and use send_move yourself.
     """
     try:
         with _client() as client:
-            final = play_paid(client, load_wallet(), stake_usdc * 1_000_000, choose_move)
+            final = play_match(client, match_token, choose_move)
             return {**summary(final), "payout": final.get("payout")}
     except StratPitError as error:
         return _error(error)
     except httpx.HTTPError as error:
         return _network(error)
-    except PaymentError as error:
-        return {"error": "payment_failed", "message": str(error)}
-    except ValueError as error:
-        return {"error": "no_wallet", "message": str(error)}
 
 
 @mcp.tool()
@@ -153,7 +168,9 @@ def send_move(match_token: str, match_id: str, round_number: int, allocation: li
 def play_practice_game_with_kit_strategy() -> dict:
     """Enter a practice game and play it to the end with the kit's strategy (strategy.py). Takes about 11 minutes.
 
-    Returns a summary: the status, whether the wallet moved every round, the winner and the scores.
+    Returns a summary: the status, whether the wallet moved every round, the winner and the scores. If your MCP
+    client cuts off tool calls that long, use enter_practice_game, then play_match_with_kit_strategy with its token,
+    or get_state and send_move.
     """
     try:
         with _client() as client:
