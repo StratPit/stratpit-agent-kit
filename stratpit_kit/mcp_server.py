@@ -6,6 +6,8 @@ way the command line does. Nothing extra runs on StratPit's server.
     pip install -e ".[mcp]"
     python -m stratpit_kit.mcp_server
 
+`stratpit-kit` does the same once the kit is installed with the mcp extra.
+
 Then add it to your MCP client's settings as a stdio server with that command: the full path of the
 Python the kit is installed in, and STRATPIT_WALLET_KEY in the server's environment (a client starts
 the server from its own folder, so a .env file here is only found if the settings also set the working
@@ -223,5 +225,10 @@ def public_data(what: str, address: str | None = None, match_id: str | None = No
     return {"error": "bad_request", "message": json.dumps({"what": what, "address": address, "match_id": match_id})}
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Runs the server over stdio."""
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

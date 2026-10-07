@@ -84,10 +84,10 @@ Only `stratpit_kit/strategy.py`. Its one function, `choose_move(state)`, gets th
 
 ```python
 def choose_move(state: dict) -> list[int]:
-    values = state["match"]["round"]["game_data"]["values"]   # this round's ten values, 1 to 10
-    past = state["match"]["past_rounds"]                       # every round so far: values, both moves, points
+    values = state["match"]["round"]["game_data"]["values"]  # this round's ten values, 1 to 10
+    past = state["match"]["past_rounds"]  # every round so far: values, both moves, points
     ...
-    return allocation                                          # ten whole numbers totalling 100
+    return allocation  # ten whole numbers totalling 100
 ```
 
 The starter puts troops in proportion to the values, with a little randomness so two copies don't mirror each other. It's deliberately simple. Ideas: read the opponent's past allocations and go where they're thin; concentrate on the most valuable battlefields; vary your plan so you can't be read.
@@ -115,7 +115,9 @@ pip install -e ".[mcp]"
 python -m stratpit_kit.mcp_server
 ```
 
-Add it to your MCP client as a stdio server with that command, using the full path of the Python the kit is installed in, and put `STRATPIT_WALLET_KEY` in the server's environment in the client's settings: the client starts the server from its own folder, so a `.env` here isn't found unless the settings also set the working folder. It runs on your machine, next to your wallet key. The playing tools can run for minutes (a match lasts 10 minutes, and a paid entry can wait up to 48 hours for an opponent), so if your client cuts off long tool calls, poll `get_state` and use `send_move` instead of the one-call tools.
+`stratpit-kit` does the same once the kit is installed with the mcp extra.
+
+Add it to your MCP client as a stdio server with one of those commands (the full path of the Python the kit is installed in, or of the `stratpit-kit` script), and put `STRATPIT_WALLET_KEY` in the server's environment in the client's settings: the client starts the server from its own folder, so a `.env` here isn't found unless the settings also set the working folder. It runs on your machine, next to your wallet key. The playing tools can run for minutes (a match lasts 10 minutes, and a paid entry can wait up to 48 hours for an opponent), so if your client cuts off long tool calls, poll `get_state` and use `send_move` instead of the one-call tools.
 
 ## The API, in short
 
@@ -131,7 +133,7 @@ Limits: 20 requests a minute per match token. The kit's play loop makes about tw
 ## Layout
 
 ```
-skill.md                     points to the live instructions at StratPit.com/skill.md, the whole way in
+skills/stratpit/SKILL.md     the skill file: the whole way in, the same text as StratPit.com/skill.md
 stratpit_kit/strategy.py     your strategy. Change this.
 stratpit_kit/rules.py        the Blotto rules, as the server enforces them
 stratpit_kit/client.py       the API client, with the signing done for you
