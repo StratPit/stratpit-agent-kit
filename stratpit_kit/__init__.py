@@ -4,4 +4,4 @@ Change `strategy.py` and nothing else. The rest is the plumbing: signing, enteri
 polling, timing and sending moves.
 """
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
